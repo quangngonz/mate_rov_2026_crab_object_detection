@@ -17,6 +17,7 @@ import argparse
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 import yaml
+import collections
 
 
 def load_yolo_annotations(label_path, img_width, img_height):
@@ -175,9 +176,16 @@ def visualize_grid(image_dir, label_dir, class_names, num_samples=16, random_sam
                 (x1, y1), x2 - x1, y2 - y1,
                 linewidth=1, edgecolor=color, facecolor='none'
             )
-            ax.add_patch(rect)
+            # Add label
+            label = class_names[class_id] if class_id < len(
+                class_names) else f'Class {class_id}'
+            ax.text(
+                x1, y1 - 2, label,
+                color='white', fontsize=6,
+                bbox=dict(facecolor=color, alpha=0.7, edgecolor='none', pad=1)
+            )
 
-        ax.set_title(f'{len(boxes)} crabs', fontsize=8)
+        ax.set_title(f'{len(boxes)} objects', fontsize=8)
         ax.axis('off')
 
     # Hide unused subplots
@@ -188,23 +196,25 @@ def visualize_grid(image_dir, label_dir, class_names, num_samples=16, random_sam
     return fig
 
 
-def analyze_dataset(dataset_dir):
+def analyze_dataset(dataset_dir, class_names=None):
     """
     Analyze dataset statistics.
 
     Args:
         dataset_dir: Root directory of dataset
+        class_names: List of class names (optional)
     """
     dataset_dir = Path(dataset_dir)
 
-    # Load data.yaml
-    yaml_path = dataset_dir / 'data.yaml'
-    if not yaml_path.exists():
-        print(f"Error: data.yaml not found at {yaml_path}")
-        return
-
-    with open(yaml_path, 'r') as f:
-        data_config = yaml.safe_load(f)
+    # Load data.yaml if class_names not provided
+    if class_names is None:
+        yaml_path = dataset_dir / 'data.yaml'
+        if yaml_path.exists():
+            with open(yaml_path, 'r') as f:
+                data_config = yaml.safe_load(f)
+                class_names = data_config.get('names', [])
+        else:
+            class_names = []
 
     print("="*80)
     print("DATASET ANALYSIS")
@@ -233,32 +243,54 @@ def analyze_dataset(dataset_dir):
         total_objects = 0
         objects_per_image = []
         empty_images = 0
+        class_counts = collections.defaultdict(int)
 
         for label_file in label_files:
             with open(label_file, 'r') as f:
-                lines = f.readlines()
-                num_objects = len([l for l in lines if l.strip()])
+                lines = [l.strip() for l in f.readlines() if l.strip()]
+                num_objects = len(lines)
                 total_objects += num_objects
                 objects_per_image.append(num_objects)
                 if num_objects == 0:
                     empty_images += 1
+                
+                # Count classes
+                for line in lines:
+                    try:
+                        class_id = int(line.split()[0])
+                        if 0 <= class_id < len(class_names):
+                            class_counts[class_names[class_id]] += 1
+                        else:
+                            class_counts[f"Class {class_id}"] += 1
+                    except (ValueError, IndexError):
+                        pass
 
         if objects_per_image:
             print(f"  Total objects: {total_objects}")
             print(
-                f"  Objects per image: {np.mean(objects_per_image):.2f} ± {np.std(objects_per_image):.2f}")
+                f"  Objects per image: {np.mean(objects_per_image):.2f} +/- {np.std(objects_per_image):.2f}")
             print(f"  Min objects: {np.min(objects_per_image)}")
             print(f"  Max objects: {np.max(objects_per_image)}")
             print(f"  Empty images: {empty_images}")
 
-            # Distribution
-            print(f"\n  Distribution:")
+            # Object count distribution
+            print(f"\n  Images by Object Count:")
             for i in range(int(np.max(objects_per_image)) + 1):
                 count = objects_per_image.count(i)
                 if count > 0:
                     pct = count / len(objects_per_image) * 100
                     bar = '█' * int(pct / 2)
-                    print(f"    {i} crabs: {count:4d} ({pct:5.1f}%) {bar}")
+                    print(f"    {i} objects: {count:4d} ({pct:5.1f}%) {bar}")
+
+            # Class distribution
+            if class_counts:
+                print(f"\n  Class Distribution:")
+                sorted_counts = sorted(class_counts.items(), key=lambda x: x[1], reverse=True)
+                max_len = max([len(str(n)) for n, c in sorted_counts])
+                for name, count in sorted_counts:
+                    pct = count / total_objects * 100
+                    bar = '█' * int(pct / 2)
+                    print(f"    {name:<{max_len}}: {count:4d} ({pct:5.1f}%) {bar}")
 
     print("="*80)
 
@@ -302,7 +334,7 @@ def main():
 
     # Analyze dataset if requested
     if args.analyze:
-        analyze_dataset(dataset_dir)
+        analyze_dataset(dataset_dir, class_names)
         return
 
     # Visualize single image if requested
