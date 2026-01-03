@@ -110,8 +110,17 @@ def train_crab_detector(
     print(f"   Device: {device}")
     print(f"   Early stopping patience: {patience}")
 
-    # Load model
-    model_name = f'yolov8{model_size}.pt' if pretrained else f'yolov8{model_size}.yaml'
+    # Check if resuming from previous training
+    best_weights_path = Path('weights/best.pt')
+    if best_weights_path.exists():
+        print(f"\n📦 Found existing checkpoint: {best_weights_path}")
+        print("   🔄 Resuming training from weights/best.pt")
+        model_name = str(best_weights_path)
+    else:
+        print(f"\n📦 No existing checkpoint found")
+        model_name = f'yolov8{model_size}.pt' if pretrained else f'yolov8{model_size}.yaml'
+        print(f"   Starting fresh training with: {model_name}")
+
     print(f"\n📦 Loading model: {model_name}")
 
     try:
