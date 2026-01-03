@@ -1,0 +1,6 @@
+dataset
+detections
+runs
+yolov8n.pt
+.DS_Store
+__pycache__/
