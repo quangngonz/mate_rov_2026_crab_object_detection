@@ -295,7 +295,7 @@ def main():
     """
 
     # Configuration
-    model_path = 'runs/detect/crab_detector/weights/best.pt'
+    model_path = 'weights/best.pt'
     test_dir = 'test_images'
     output_dir = 'detections'
     conf_threshold = 0.8  # Lower for more detections, higher for more precision
