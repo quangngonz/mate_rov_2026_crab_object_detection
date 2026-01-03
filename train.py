@@ -190,8 +190,6 @@ def train_crab_detector(
             fraction=1.0,       # Dataset fraction to train on
             profile=False,      # Profile ONNX and TensorRT speeds
             freeze=None,        # Freeze layers (None or list of layer indices)
-
-            agnostic_nms=True,  # Class-agnostic NMS
         )
 
         print("\n" + "="*80)

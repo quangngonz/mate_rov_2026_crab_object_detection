@@ -298,8 +298,8 @@ def main():
     model_path = 'runs/detect/crab_detector/weights/best.pt'
     test_dir = 'test_images'
     output_dir = 'detections'
-    conf_threshold = 0.25  # Lower for more detections, higher for more precision
-    iou_threshold = 0.45   # NMS threshold
+    conf_threshold = 0.8  # Lower for more detections, higher for more precision
+    iou_threshold = 0.3   # NMS threshold
 
     print("="*80)
     print("CRAB DETECTION INFERENCE")
