@@ -72,14 +72,32 @@ class SyntheticDatasetGenerator:
         Returns:
             Tuple of (background with crab pasted, bounding box as (x_min, y_min, x_max, y_max))
         """
+        import numpy as np
+
         x, y = position
         background.paste(crab_rgba, (x, y), crab_rgba)
 
-        # Calculate bounding box
-        x_min = x
-        y_min = y
-        x_max = x + crab_rgba.width
-        y_max = y + crab_rgba.height
+        # Calculate bounding box from actual alpha channel (non-transparent pixels)
+        # This ensures bbox fits the visible crab after perspective transforms
+        alpha = np.array(crab_rgba.split()[3])
+        # Threshold to ignore near-transparent pixels
+        coords = np.argwhere(alpha > 10)
+
+        if len(coords) > 0:
+            y_min_rel, x_min_rel = coords.min(axis=0)
+            y_max_rel, x_max_rel = coords.max(axis=0)
+
+            # Convert to absolute coordinates
+            x_min = x + x_min_rel
+            y_min = y + y_min_rel
+            x_max = x + x_max_rel + 1
+            y_max = y + y_max_rel + 1
+        else:
+            # Fallback to full image if no visible pixels
+            x_min = x
+            y_min = y
+            x_max = x + crab_rgba.width
+            y_max = y + crab_rgba.height
 
         return background, (x_min, y_min, x_max, y_max)
 
