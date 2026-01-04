@@ -19,7 +19,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Train YOLOv8 crab detection model")
     parser.add_argument(
-        '--use_last_weights', type=str, default='True',
+        '--use_last_weights', type=str, default='False',
         help="Whether to use last weights to resume training if available (True/False)"
     )
     args = parser.parse_args()
