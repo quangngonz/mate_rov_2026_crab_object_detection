@@ -8,12 +8,21 @@ CLI wrapper for training YOLOv8 crab detection models.
 from models import CrabTrainer
 from pathlib import Path
 import yaml
+import argparse
 
 
 def main():
     """Main training function with default hyperparameters."""
 
     data_yaml = 'dataset/data.yaml'
+
+    parser = argparse.ArgumentParser(
+        description="Train YOLOv8 crab detection model")
+    parser.add_argument(
+        '--use_last_weights', type=str, default='True',
+        help="Whether to use last weights to resume training if available (True/False)"
+    )
+    args = parser.parse_args()
 
     print("="*80)
     print("CRAB DETECTION MODEL TRAINING")
@@ -51,7 +60,8 @@ def main():
 
     # Check for existing checkpoint
     best_weights = Path('weights/best.pt')
-    resume_checkpoint = str(best_weights) if best_weights.exists() else None
+    resume_checkpoint = str(best_weights) if args.use_last_weights.lower(
+    ) == 'true' and best_weights.exists() else None
 
     if resume_checkpoint:
         print(f"\n📦 Found existing checkpoint: {resume_checkpoint}")
