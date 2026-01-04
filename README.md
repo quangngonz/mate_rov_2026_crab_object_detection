@@ -14,18 +14,21 @@ This system demonstrates how to build a robust object detector starting from min
 
 ```
 crab_classifier/
-├── reference_images/          # Original reference images
-├── test_images/               # Test images for evaluation
-├── dataset/                   # Generated synthetic dataset
-├── runs/                      # Training outputs
-├── detections/                # Inference results
-├── generate_dataset.py        # Synthetic data generation script
-├── visualize_dataset.py       # Dataset visualization tool
-├── train.py                   # Model training script
-├── inference.py               # Static image inference script
-├── live_inference.py          # Webcam/Video inference script
-├── requirements.txt           # Python dependencies
-└── README.md                  # This file
+├── config/              # Configuration files
+├── data/                # Data processing logic
+├── dataset/             # Generated synthetic dataset (train/val)
+├── models/              # Model definitions and training logic
+├── reference_images/    # Source images for synthetic generation
+├── test_images/         # Images for testing inference
+├── ui/                  # UI components for live inference
+├── utils/               # Utility functions
+├── weights/             # Pre-trained or best model weights
+├── generate_dataset.py  # Script to create synthetic dataset
+├── inference.py         # Script for static image inference
+├── live_inference.py    # Script for real-time webcam inference
+├── train.py             # Script to train the model
+├── visualize_dataset.py # Tool to inspect the dataset
+└── requirements.txt     # Python dependencies
 ```
 
 ## 🚀 Quick Start
@@ -33,88 +36,94 @@ crab_classifier/
 ### 1. Installation
 
 ```bash
-# Create virtual environment
+# Create and activate virtual environment (optional but recommended)
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Generate Synthetic Dataset
+### 2. Generate Dataset
 
-Create a large dataset from the reference images.
+Create a synthetic dataset from the images in `reference_images/`.
 
 ```bash
 python generate_dataset.py
 ```
 
-- Segments crabs from `reference_images/`.
-- Applies rotation, scaling, lighting, and noise augmentations.
-- Generates 1000 training and 200 validation images in `dataset/`.
+### 3. Visualize Data (Optional)
 
-### 3. Visualize Dataset (Optional)
-
-Verify the quality of generated data and annotations.
+Check the generated images to ensure quality.
 
 ```bash
-# View a grid of 16 random samples
+# View 16 random samples
 python visualize_dataset.py --random --num_samples 16
 
 # Analyze dataset statistics
 python visualize_dataset.py --analyze
+
+# Visualize a single specific image
+python visualize_dataset.py --single image_name.jpg --split train
+
+# Save visualization to a file
+python visualize_dataset.py --random --output visualization.png
 ```
 
-### 4. Train the Model
+### 4. Train Model
 
-Train YOLOv8n on the synthetic dataset.
+Train the YOLOv8n model on the generated dataset.
 
 ```bash
 python train.py
 ```
 
-- **Default**: YOLOv8 Nano, 100 epochs, image size 640.
-- **Output**: Best weights saved to `runs/detect/crab_detector/weights/best.pt`.
+Weights will be saved to `runs/detect/crab_detector/weights/best.pt`.
 
-### 5. Running Inference
+### 5. Inference
 
 #### Static Images
-Detect crabs in images from `test_images/`.
+
+Detect crabs in images located in `test_images/`. Results are saved to `detections/`.
 
 ```bash
 python inference.py
 ```
 
-- Results saved to `detections/`.
-- Configuration: Edit `inference.py` to change thresholds.
-
 #### Live Webcam
-Run real-time detection on your webcam.
+
+Run real-time detection on your camera feed.
 
 ```bash
 python live_inference.py
 ```
 
-- **Controls**:
-    - `Q` / `ESC`: Quit
-    - `S`: Save current frame
-    - `+` / `-`: Adjust confidence threshold
-    - `F`: Toggle FPS display
+**Controls:**
 
-- **Options**:
-    ```bash
-    # Specify different camera or model
-    python live_inference.py --camera 1 --model runs/detect/crab_detector/weights/best.pt
-    ```
+- `Q` / `ESC`: Quit
+- `S`: Save current frame
+- `+` / `-`: Adjust confidence threshold
+- `F`: Toggle FPS display
+
+**Live Inference Options:**
+
+| Argument   | Default           | Description                      |
+| :--------- | :---------------- | :------------------------------- |
+| `--model`  | `weights/best.pt` | Path to model weights            |
+| `--conf`   | `0.77`            | Confidence threshold (0.0 - 1.0) |
+| `--iou`    | `0.45`            | NMS IoU threshold (0.0 - 1.0)    |
+| `--camera` | `0`               | Camera device ID                 |
+| `--width`  | `1920`            | Camera frame width               |
+| `--height` | `1080`            | Camera frame height              |
+
+**Example:**
+
+```bash
+python live_inference.py --camera 1 --conf 0.5 --width 1280 --height 720
+```
 
 ## 🔧 Troubleshooting
 
-- **Dataset not found**: Run `generate_dataset.py` first.
-- **Model not found**: Run `train.py` first to generate the weights.
-- **Out of Memory**: Decrease `batch_size` in `train.py` or use a smaller `model_size`.
-- **Camera error**: Ensure no other application is using the webcam and try a different `camera_id` (e.g., `--camera 1`) in `live_inference.py`.
-
-## 📚 References
-
-- **YOLOv8**: [Ultralytics GitHub](https://github.com/ultralytics/ultralytics)
-- **RemBG**: [Rembg GitHub](https://github.com/danielgatis/rembg)
+- **Dataset not found**: Run `generate_dataset.py`.
+- **Model not found**: Run `train.py` or ensure `weights/best.pt` exists.
+- **Camera error**: Try a different `--camera` ID (e.g., `--camera 1`) or check if another app is using it.
