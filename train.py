@@ -10,6 +10,17 @@ from pathlib import Path
 import yaml
 import argparse
 
+from config.constants import (
+    DEFAULT_IMAGE_SIZE,
+    DEFAULT_MODEL_SIZE,
+    DEFAULT_EPOCHS,
+    DEFAULT_BATCH_SIZE,
+    DEFAULT_IMAGE_SIZE,
+    DEFAULT_PATIENCE,
+    DEFAULT_SAVE_PERIOD,
+    DEFAULT_WORKERS
+)
+
 
 def main():
     """Main training function with default hyperparameters."""
@@ -46,17 +57,17 @@ def main():
     # Initialize trainer
     trainer = CrabTrainer(
         data_yaml=data_yaml,
-        model_size='n',  # Nano model
+        model_size=DEFAULT_MODEL_SIZE,  # Nano model
         device=''  # Auto-select
     )
 
     print(f"\n🔧 Training Configuration:")
-    print(f"   Model: YOLOv8n (Nano)")
-    print(f"   Image size: 640x640")
-    print(f"   Batch size: 16")
-    print(f"   Epochs: 100")
+    print(f"   Model: YOLOv8{DEFAULT_MODEL_SIZE} (Nano)")
+    print(f"   Image size: {DEFAULT_IMAGE_SIZE[0]}x{DEFAULT_IMAGE_SIZE[1]}")
+    print(f"   Batch size: {DEFAULT_BATCH_SIZE}")
+    print(f"   Epochs: {DEFAULT_EPOCHS}")
     print(f"   Device: {trainer.device}")
-    print(f"   Early stopping patience: 50")
+    print(f"   Early stopping patience: {DEFAULT_PATIENCE} epochs")
 
     # Check for existing checkpoint
     best_weights = Path('weights/best.pt')
@@ -76,16 +87,16 @@ def main():
 
     try:
         results = trainer.train(
-            epochs=100,
-            batch_size=16,
-            img_size=640,
+            epochs=DEFAULT_EPOCHS,
+            batch_size=DEFAULT_BATCH_SIZE,
+            img_size=DEFAULT_IMAGE_SIZE[0],
             project='runs/detect',
             name='crab_detector',
             exist_ok=False,
             pretrained=True,
-            patience=50,
-            save_period=10,
-            workers=8,
+            patience=DEFAULT_PATIENCE,
+            save_period=DEFAULT_SAVE_PERIOD,
+            workers=DEFAULT_WORKERS,
             resume_checkpoint=resume_checkpoint
         )
 
