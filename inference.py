@@ -9,12 +9,22 @@ from utils.stats import print_detection_summary
 from models import CrabDetector, InferenceEngine
 from pathlib import Path
 
+import argparse
+
 
 def main():
     """Main inference function."""
 
+    parser = argparse.ArgumentParser(
+        description="Run batch inference on test images.")
+    parser.add_argument(
+        '--model_path', type=str, default='weights/best.pt',
+        help="Path to the trained model weights."
+    )
+    args = parser.parse_args()
+
     # Configuration
-    model_path = 'weights/best.pt'
+    model_path = args.model_path
     test_dir = 'test_images'
     output_dir = 'detections'
     conf_threshold = 0.8
