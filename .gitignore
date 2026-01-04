@@ -2,6 +2,6 @@ dataset
 detections
 runs
 yolov8n.pt
+yolov11n.pt
 .DS_Store
 __pycache__/
-legacy
