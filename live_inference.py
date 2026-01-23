@@ -7,106 +7,34 @@ Handles cross-platform camera enumeration and model initialization.
 """
 
 import argparse
-import glob
-import os
-import platform
 import sys
 from typing import List, Tuple
+
+from cv2_enumerate_cameras import enumerate_cameras
 
 # Local imports
 from ui import LiveCrabDetector
 
 
-def _get_linux_cameras() -> List[Tuple[int, str]]:
-    """
-    Enumerates cameras on Linux using sysfs to avoid opening devices.
-    Returns: List of (index, name).
-    """
-    cameras = []
-    try:
-        # Sort to keep video0, video1 in order
-        video_devices = sorted(glob.glob("/sys/class/video4linux/video*"))
-        for dev_path in video_devices:
-            # Extract index from filenames like 'video0'
-            try:
-                idx = int(os.path.basename(dev_path).replace("video", ""))
-            except ValueError:
-                continue
-
-            name_path = os.path.join(dev_path, "name")
-            if os.path.exists(name_path):
-                with open(name_path, "r", encoding="utf-8") as f:
-                    camera_name = f.read().strip()
-            else:
-                camera_name = f"Camera {idx}"
-
-            cameras.append((idx, camera_name))
-    except OSError:
-        pass  # Fallback will handle this if permission denied
-    return cameras
-
-
-def _get_windows_cameras() -> List[Tuple[int, str]]:
-    """
-    Enumerates cameras on Windows using pygrabber (DirectShow).
-    Falls back to brute-force OpenCV checks if pygrabber is missing.
-    """
-    cameras = []
-    try:
-        from pygrabber.dshow_graph import FilterGraph
-
-        graph = FilterGraph()
-        devices = graph.get_input_devices()
-        for idx, name in enumerate(devices):
-            cameras.append((idx, name))
-
-    except ImportError:
-        print("\n[Info] 'pygrabber' not found. Install it for real device names.")
-        print("       pip install pygrabber")
-        print("[Info] Falling back to index checking...\n")
-        return _get_fallback_cameras()
-
-    return cameras
-
-
-def _get_fallback_cameras(max_checks: int = 5) -> List[Tuple[int, str]]:
-    """
-    Brute-force checks indices 0 to max_checks using OpenCV.
-    Used for macOS or as a fallback for Windows/Linux failures.
-    """
-    import cv2
-
-    cameras = []
-    # Suppress MSMF verbosity on Windows during fallback checks
-    if os.name == "nt":
-        os.environ["OPENCV_VIDEOIO_PRIORITY_MSMF"] = "0"
-
-    for i in range(max_checks):
-        cap = cv2.VideoCapture(i)
-        if cap.isOpened():
-            cameras.append((i, f"Camera Device {i}"))
-            cap.release()
-
-    return cameras
-
-
 def get_camera_list() -> List[Tuple[int, str]]:
     """
     Returns a list of tuples (index, name) for available cameras.
-    Dispatches logic based on Operating System.
+    Uses cv2_enumerate_cameras for cross-platform camera detection.
     """
-    system_os = platform.system()
+    cameras = []
+    try:
+        for idx, camera_info in enumerate(enumerate_cameras()):
+            # Extract index and name from camera_info object
+            # idx = camera_info.index
+            name = camera_info.name if hasattr(
+                camera_info, 'name') else f"Camera {idx}"
+            cameras.append((idx, name))
+    except Exception as e:
+        print(f"Warning: Error enumerating cameras: {e}")
+        # Fallback to index 0 if enumeration fails
+        cameras = [(0, "Camera 0")]
 
-    if system_os == "Linux":
-        cams = _get_linux_cameras()
-        # If sysfs method failed to find anything, try fallback
-        return cams if cams else _get_fallback_cameras()
-
-    if system_os == "Windows":
-        return _get_windows_cameras()
-
-    # macOS and others
-    return _get_fallback_cameras()
+    return cameras
 
 
 def prompt_user_selection(available_cams: List[Tuple[int, str]]) -> int:
