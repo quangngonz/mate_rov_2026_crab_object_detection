@@ -56,6 +56,7 @@ class LiveCrabDetector:
         # Settings
         self.show_fps = True
         self.line_width = 2
+        self.contrast = 1.5
 
         # Statistics
         self.total_frames = 0
@@ -138,6 +139,8 @@ class LiveCrabDetector:
         print("  S: Save current frame")
         print("  +: Increase confidence threshold")
         print("  -: Decrease confidence threshold")
+        print("  I: Increase contrast")
+        print("  O: Decrease contrast")
         print("  F: Toggle FPS display")
         print("=" * 50 + "\n")
 
@@ -147,6 +150,9 @@ class LiveCrabDetector:
                 if not ret:
                     print("Failed to read frame")
                     break
+
+                # Apply contrast adjustment
+                frame = cv2.convertScaleAbs(frame, alpha=self.contrast, beta=0)
 
                 # Process frame
                 annotated, num_detections, class_counts = self.process_frame(
@@ -168,7 +174,8 @@ class LiveCrabDetector:
                         fps,
                         num_detections,
                         class_counts,
-                        self.detector.conf_threshold
+                        self.detector.conf_threshold,
+                        self.contrast
                     )
                 annotated = self.display.draw_controls(annotated)
 
@@ -194,6 +201,12 @@ class LiveCrabDetector:
                         f"Confidence threshold: {self.detector.conf_threshold:.2f}")
                 elif key == ord('f'):
                     self.show_fps = not self.show_fps
+                elif key == ord('i'):
+                    self.contrast = min(3.0, self.contrast + 0.1)
+                    print(f"Contrast: {self.contrast:.1f}")
+                elif key == ord('o'):
+                    self.contrast = max(0.5, self.contrast - 0.1)
+                    print(f"Contrast: {self.contrast:.1f}")
 
         except KeyboardInterrupt:
             print("\nInterrupted by user")

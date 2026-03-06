@@ -69,5 +69,5 @@ tzdata
 ultralytics
 ultralytics-thop
 urllib3
-onnxruntime-gpu
+# onnxruntime-gpu
 cv2-enumerate-cameras

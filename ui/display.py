@@ -74,7 +74,8 @@ class DisplayOverlay:
         fps: float,
         num_detections: int,
         class_counts: Dict[str, int],
-        conf_threshold: float
+        conf_threshold: float,
+        contrast: float = 1.0
     ) -> np.ndarray:
         """
         Draw information overlay on image.
@@ -85,6 +86,7 @@ class DisplayOverlay:
             num_detections: Total number of detections in frame
             class_counts: Dictionary of counts per class
             conf_threshold: Current confidence threshold
+            contrast: Current contrast multiplier
 
         Returns:
             Image with overlay drawn
@@ -93,7 +95,7 @@ class DisplayOverlay:
         overlay = image.copy()
 
         # Draw semi-transparent background
-        cv2.rectangle(overlay, (10, 10), (320, 180), (0, 0, 0), -1)
+        cv2.rectangle(overlay, (10, 10), (320, 205), (0, 0, 0), -1)
         cv2.addWeighted(overlay, 0.6, image, 0.4, 0, image)
 
         # Draw text info
@@ -125,13 +127,18 @@ class DisplayOverlay:
         # Confidence threshold
         cv2.putText(image, f"Conf: {conf_threshold:.2f}",
                     (20, y_pos), font, font_scale, color, thickness)
+        y_pos += 25
+
+        # Contrast
+        cv2.putText(image, f"Contrast: {contrast:.1f}",
+                    (20, y_pos), font, font_scale, color, thickness)
 
         return image
 
     def draw_controls(
         self,
         image: np.ndarray,
-        controls_text: str = "Q:Quit | S:Save | +/-:Conf | F:FPS"
+        controls_text: str = "Q:Quit | S:Save | +/-:Conf | I/O:Contrast | F:FPS"
     ) -> np.ndarray:
         """
         Draw control instructions at bottom of image.
