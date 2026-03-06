@@ -27,8 +27,11 @@ crab_classifier/
 ├── inference.py         # Script for static image inference
 ├── live_inference.py    # Script for real-time webcam inference
 ├── train.py             # Script to train the model
+├── extract_and_label.py # Extract video frames and auto-label
+├── review_and_train.py  # Review labels and fine-tune model
 ├── visualize_dataset.py # Tool to inspect the dataset
-└── requirements.txt     # Python dependencies
+├── requirements.txt     # Python dependencies
+└── VIDEO_WORKFLOW.md    # Video-based improvement guide
 ```
 
 ## 🚀 Quick Start
@@ -121,6 +124,35 @@ python live_inference.py
 ```bash
 python live_inference.py --camera 1 --conf 0.5 --width 1280 --height 720
 ```
+
+## 🎥 Video-Based Model Improvement
+
+Improve your model by extracting frames from underwater videos, auto-labeling them, and fine-tuning with corrected labels.
+
+### Workflow Overview
+
+1. **Extract & Auto-Label**: Extract frames from video and automatically label using current model
+2. **Review & Correct**: Interactive UI to review and fix labels
+3. **Fine-tune**: Train model with additional data
+
+### Quick Example
+
+```bash
+# Step 1: Extract frames and auto-label
+python extract_and_label.py your_video.mp4 --fps 1.0
+
+# Step 2: Review labels and train
+python review_and_train.py
+# - Use arrow keys to navigate
+# - Click & drag to add boxes
+# - Press D to delete boxes
+# - Press T to start training
+
+# Step 3: Use improved model
+cp runs/detect/crab_detector_finetuned/weights/best.pt weights/best.pt
+```
+
+📖 **For detailed instructions**, see [VIDEO_WORKFLOW.md](VIDEO_WORKFLOW.md)
 
 ## 🔧 Troubleshooting
 
