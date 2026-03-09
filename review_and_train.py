@@ -215,35 +215,50 @@ class LabelReviewUI:
 
     def draw_boxes(self):
         """Draw bounding boxes on the image."""
-        self.display_image = self.current_image.copy()
         img_height, img_width = self.current_image.shape[:2]
+
+        # Fixed UI header height just for status bar
+        ui_height = 40
+
+        # Create canvas with extra space at top for status bar only
+        canvas_height = img_height + ui_height
+        self.display_image = np.zeros(
+            (canvas_height, img_width, 3), dtype=np.uint8)
+        self.display_image.fill(40)  # Dark gray background
+
+        # Place original image below the status bar
+        self.display_image[ui_height:, :] = self.current_image.copy()
 
         for i, box in enumerate(self.current_boxes):
             x1, y1, x2, y2 = box.to_pixel_coords(img_width, img_height)
+
+            # Offset y coordinates for the status bar
+            y1_offset = y1 + ui_height
+            y2_offset = y2 + ui_height
 
             # Choose color
             color = CLASS_COLORS[box.class_id]
             thickness = 3 if i == self.selected_box_index else 2
 
-            # Draw box
-            cv2.rectangle(self.display_image, (x1, y1),
-                          (x2, y2), color, thickness)
+            # Draw box (with offset)
+            cv2.rectangle(self.display_image, (x1, y1_offset),
+                          (x2, y2_offset), color, thickness)
 
-            # Draw label
+            # Draw label (with offset)
             label = CRAB_CLASSES[box.class_id]
             label_size, _ = cv2.getTextSize(
                 label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
 
-            cv2.rectangle(self.display_image, (x1, y1 - label_size[1] - 8),
-                          (x1 + label_size[0] + 4, y1), color, -1)
-            cv2.putText(self.display_image, label, (x1 + 2, y1 - 4),
+            cv2.rectangle(self.display_image, (x1, y1_offset - label_size[1] - 8),
+                          (x1 + label_size[0] + 4, y1_offset), color, -1)
+            cv2.putText(self.display_image, label, (x1 + 2, y1_offset - 4),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
     def draw_ui(self):
-        """Draw UI elements."""
-        img_height, img_width = self.display_image.shape[:2]
+        """Draw UI elements - status bar at top, help text overlays image."""
+        canvas_height, img_width = self.display_image.shape[:2]
 
-        # Status bar
+        # Status bar at the very top (not overlaying)
         status = f"Image {self.current_index + 1}/{len(self.image_files)} | "
         status += f"Boxes: {len(self.current_boxes)}"
         if self.selected_box_index is not None:
@@ -256,7 +271,7 @@ class LabelReviewUI:
         cv2.putText(self.display_image, status, (10, 22),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
-        # Help text
+        # Help text (overlays the image - starts at y=40 where image begins)
         if self.show_help:
             help_lines = [
                 "CONTROLS:",
@@ -271,10 +286,10 @@ class LabelReviewUI:
                 "  H: Toggle help | T: Train | Q/ESC: Quit"
             ]
 
-            y_offset = 50
+            y_offset = 50  # Start below status bar but overlay the image
             for line in help_lines:
                 cv2.rectangle(self.display_image, (0, y_offset),
-                              (350, y_offset + 25), (50, 50, 50), -1)
+                              (500, y_offset + 25), (50, 50, 50), -1)
                 cv2.putText(self.display_image, line, (10, y_offset + 18),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
                 y_offset += 25
@@ -285,25 +300,36 @@ class LabelReviewUI:
             return
 
         img_height, img_width = self.current_image.shape[:2]
+        ui_height = 40  # Fixed status bar height
+
+        # Adjust y coordinate to account for UI area
+        y_adjusted = y - ui_height
+
+        # Ignore clicks in the UI area
+        if y < ui_height:
+            return
 
         if event == cv2.EVENT_LBUTTONDOWN:
-            # Check if clicking on existing box
+            # Check if clicking on existing box (using adjusted coordinates)
             for i, box in enumerate(self.current_boxes):
                 x1, y1, x2, y2 = box.to_pixel_coords(img_width, img_height)
-                if x1 <= x <= x2 and y1 <= y <= y2:
+                if x1 <= x <= x2 and y1 <= y_adjusted <= y2:
                     self.selected_box_index = i
                     return
 
-            # Start drawing new box
+            # Start drawing new box (store adjusted coordinates)
             self.drawing = True
-            self.start_point = (x, y)
+            self.start_point = (x, y_adjusted)
             self.selected_box_index = None
 
         elif event == cv2.EVENT_MOUSEMOVE:
             if self.drawing and self.start_point:
-                # Draw temporary box
+                # Draw temporary box (with offset for display)
                 temp_image = self.display_image.copy()
-                cv2.rectangle(temp_image, self.start_point, (x, y),
+                start_display = (
+                    self.start_point[0], self.start_point[1] + ui_height)
+                end_display = (x, y)
+                cv2.rectangle(temp_image, start_display, end_display,
                               CLASS_COLORS[self.current_class], 2)
                 cv2.imshow('Label Review', temp_image)
 
@@ -311,11 +337,11 @@ class LabelReviewUI:
             if self.drawing and self.start_point:
                 self.drawing = False
 
-                # Create bounding box
+                # Create bounding box (using adjusted coordinates)
                 x1 = min(self.start_point[0], x)
-                y1 = min(self.start_point[1], y)
+                y1 = min(self.start_point[1], y_adjusted)
                 x2 = max(self.start_point[0], x)
-                y2 = max(self.start_point[1], y)
+                y2 = max(self.start_point[1], y_adjusted)
 
                 # Only add if box has valid size
                 if abs(x2 - x1) > 10 and abs(y2 - y1) > 10:
@@ -442,6 +468,7 @@ class LabelReviewUI:
                     self.save_labels(
                         self.image_files[self.current_index], self.current_boxes)
                 cv2.destroyAllWindows()
+                cv2.waitKey(1)  # Allow window destruction to process
                 return 'train'
 
             # Quit
@@ -450,17 +477,24 @@ class LabelReviewUI:
                     self.save_labels(
                         self.image_files[self.current_index], self.current_boxes)
                 cv2.destroyAllWindows()
+                cv2.waitKey(1)  # Allow window destruction to process
                 return 'quit'
 
 
-def prepare_training_data(review_dir: str, dataset_dir: str = 'dataset'):
+def prepare_training_data(review_dir: str, dataset_dir: str = 'dataset', val_split: float = 0.2):
     """
-    Copy reviewed data to training dataset.
+    Copy reviewed data to training dataset with 80/20 train/val split.
+    Only copies images that haven't been copied before (prevents duplicates).
 
     Args:
         review_dir: Directory containing reviewed images and labels
         dataset_dir: Main dataset directory
+        val_split: Fraction of new data to use for validation (default: 0.2)
     """
+    import shutil
+    import hashlib
+    import random
+
     review_dir = Path(review_dir)
     dataset_dir = Path(dataset_dir)
 
@@ -469,40 +503,119 @@ def prepare_training_data(review_dir: str, dataset_dir: str = 'dataset'):
 
     train_images_dir = dataset_dir / 'images' / 'train'
     train_labels_dir = dataset_dir / 'labels' / 'train'
+    val_images_dir = dataset_dir / 'images' / 'val'
+    val_labels_dir = dataset_dir / 'labels' / 'val'
 
     train_images_dir.mkdir(parents=True, exist_ok=True)
     train_labels_dir.mkdir(parents=True, exist_ok=True)
+    val_images_dir.mkdir(parents=True, exist_ok=True)
+    val_labels_dir.mkdir(parents=True, exist_ok=True)
 
-    # Get existing training files count
-    existing_count = len(list(train_images_dir.glob('*.jpg'))) + \
+    # Track which images have been copied using a hash log
+    hash_log_file = dataset_dir / '.copied_images_hashes.txt'
+    copied_hashes = set()
+
+    if hash_log_file.exists():
+        with open(hash_log_file, 'r') as f:
+            copied_hashes = set(line.strip() for line in f if line.strip())
+
+    print(f"\nPreviously copied images: {len(copied_hashes)}")
+
+    # Get existing file counts
+    existing_train_count = len(list(train_images_dir.glob('*.jpg'))) + \
         len(list(train_images_dir.glob('*.png')))
+    existing_val_count = len(list(val_images_dir.glob('*.jpg'))) + \
+        len(list(val_images_dir.glob('*.png')))
 
-    # Copy files
+    # Get review files
     image_files = list(review_images.glob('*.jpg')) + \
         list(review_images.glob('*.png'))
 
-    print(f"\nAdding {len(image_files)} new images to training dataset...")
+    print(f"Checking {len(image_files)} images from review directory...")
+
+    # Filter out duplicates first
+    new_images = []
+    skipped_count = 0
 
     for img_file in image_files:
+        # Calculate hash of image
+        hash_md5 = hashlib.md5()
+        with open(img_file, 'rb') as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                hash_md5.update(chunk)
+        img_hash = hash_md5.hexdigest()
+
+        # Skip if already copied
+        if img_hash in copied_hashes:
+            skipped_count += 1
+            continue
+
+        new_images.append((img_file, img_hash))
+
+    # Shuffle and split new images
+    random.shuffle(new_images)
+    split_idx = int(len(new_images) * (1 - val_split))
+    train_images = new_images[:split_idx]
+    val_images = new_images[split_idx:]
+
+    new_hashes = []
+    train_copied = 0
+    val_copied = 0
+
+    # Copy training images
+    for img_file, img_hash in train_images:
         label_file = review_labels / f"{img_file.stem}.txt"
 
         # Copy with new names to avoid conflicts
-        new_img_name = f"train_{existing_count:05d}{img_file.suffix}"
-        new_label_name = f"train_{existing_count:05d}.txt"
+        new_img_name = f"train_{existing_train_count:05d}{img_file.suffix}"
+        new_label_name = f"train_{existing_train_count:05d}.txt"
 
         # Copy image
-        import shutil
         shutil.copy(str(img_file), str(train_images_dir / new_img_name))
+        train_copied += 1
 
         # Copy label if exists
         if label_file.exists():
             shutil.copy(str(label_file), str(
                 train_labels_dir / new_label_name))
 
-        existing_count += 1
+        # Track this hash
+        new_hashes.append(img_hash)
+        existing_train_count += 1
 
-    print(f"✓ Added new data to training dataset")
-    print(f"  Total training images now: {existing_count}")
+    # Copy validation images
+    for img_file, img_hash in val_images:
+        label_file = review_labels / f"{img_file.stem}.txt"
+
+        # Copy with new names to avoid conflicts
+        new_img_name = f"val_{existing_val_count:05d}{img_file.suffix}"
+        new_label_name = f"val_{existing_val_count:05d}.txt"
+
+        # Copy image
+        shutil.copy(str(img_file), str(val_images_dir / new_img_name))
+        val_copied += 1
+
+        # Copy label if exists
+        if label_file.exists():
+            shutil.copy(str(label_file), str(val_labels_dir / new_label_name))
+
+        # Track this hash
+        new_hashes.append(img_hash)
+        existing_val_count += 1
+
+    # Update hash log
+    if new_hashes:
+        with open(hash_log_file, 'a') as f:
+            for h in new_hashes:
+                f.write(f"{h}\n")
+
+    print(f"\n✓ Processing complete:")
+    print(f"  New images copied to train: {train_copied}")
+    print(f"  New images copied to val: {val_copied}")
+    print(f"  Duplicates skipped: {skipped_count}")
+    print(f"  Total training images: {existing_train_count}")
+    print(f"  Total validation images: {existing_val_count}")
+    print(f"  Overall split: {existing_train_count/(existing_train_count + existing_val_count)*100:.1f}% train / {existing_val_count/(existing_train_count + existing_val_count)*100:.1f}% val")
 
 
 def train_model(dataset_dir: str = 'dataset', epochs: int = 50, model_path: str = 'weights/best.pt'):
@@ -586,6 +699,12 @@ def main():
         default=50,
         help="Number of epochs for fine-tuning (default: 50)"
     )
+    parser.add_argument(
+        '--val_split',
+        type=float,
+        default=0.2,
+        help="Fraction of new data to use for validation (default: 0.2 for 80/20 split)"
+    )
 
     args = parser.parse_args()
 
@@ -609,12 +728,17 @@ def main():
     result = ui.run()
 
     if result == 'train':
+        # Ensure all CV2 windows are closed
+        cv2.destroyAllWindows()
+        cv2.waitKey(1)
+
         print("\n" + "="*80)
         print("PREPARING TRAINING DATA")
         print("="*80)
 
         # Prepare data
-        prepare_training_data(args.review_dir, args.dataset_dir)
+        prepare_training_data(
+            args.review_dir, args.dataset_dir, args.val_split)
 
         # Train model
         train_model(args.dataset_dir, args.epochs, args.model_path)
