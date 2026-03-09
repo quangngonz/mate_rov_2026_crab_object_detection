@@ -1,8 +1,10 @@
 dataset
 detections
 runs
-yolov8n.pt
+yolov26n.pt
 yolov11n.pt
 .DS_Store
 __pycache__/
 /.venv
+test_images/pool_test.mp4
+VIDEO_WORKFLOW.md

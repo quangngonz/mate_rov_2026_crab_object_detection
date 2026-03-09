@@ -76,7 +76,7 @@ def main():
         description="Live crab detection from camera feed"
     )
     parser.add_argument(
-        "--model", type=str, default="weights/best.pt", help="Path to .pt model"
+        "--model", type=str, default="weights/best_tuned.pt", help="Path to .pt model"
     )
     parser.add_argument(
         "--conf", type=float, default=0.77, help="Confidence threshold (0.0-1.0)"

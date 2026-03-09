@@ -16,7 +16,7 @@ OVERLAP_THRESHOLD: float = 0.3
 RANDOM_SEED: int = 42
 
 # Training Constants
-DEFAULT_MODEL_SIZE: str = 'n'  # YOLOv8 model size (n, s, m, l, x)
+DEFAULT_MODEL_SIZE: str = 'n'  # YOLOv26 model size (n, s, m, l, x)
 DEFAULT_EPOCHS: int = 150
 DEFAULT_BATCH_SIZE: int = 16
 DEFAULT_PATIENCE: int = 50

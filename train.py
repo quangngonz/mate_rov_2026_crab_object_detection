@@ -2,7 +2,7 @@
 Training Script
 ==============
 
-CLI wrapper for training YOLOv8 crab detection models.
+CLI wrapper for training YOLOv26 crab detection models.
 """
 
 from models import CrabTrainer
@@ -28,7 +28,7 @@ def main():
     data_yaml = 'dataset/data.yaml'
 
     parser = argparse.ArgumentParser(
-        description="Train YOLOv8 crab detection model")
+        description="Train YOLOv26 crab detection model")
     parser.add_argument(
         '--use_last_weights', type=str, default='False',
         help="Whether to use last weights to resume training if available (True/False)"
@@ -62,7 +62,7 @@ def main():
     )
 
     print(f"\n🔧 Training Configuration:")
-    print(f"   Model: YOLOv8{DEFAULT_MODEL_SIZE} (Nano)")
+    print(f"   Model: YOLOv26{DEFAULT_MODEL_SIZE} (Nano)")
     print(f"   Image size: {DEFAULT_IMAGE_SIZE[0]}x{DEFAULT_IMAGE_SIZE[1]}")
     print(f"   Batch size: {DEFAULT_BATCH_SIZE}")
     print(f"   Epochs: {DEFAULT_EPOCHS}")

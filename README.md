@@ -8,7 +8,7 @@ This system demonstrates how to build a robust object detector starting from min
 
 - **Input**: Reference images of crabs.
 - **Process**: Generate synthetic training data with extensive augmentation.
-- **Output**: YOLOv8 model capable of detecting multiple crabs.
+- **Output**: YOLOv26 model capable of detecting multiple crabs.
 
 ## 📁 Directory Structure
 
@@ -75,7 +75,7 @@ python visualize_dataset.py --random --output visualization.png
 
 ### 4. Train Model
 
-Train the YOLOv8n model on the generated dataset.
+Train the YOLOv26n model on the generated dataset.
 
 ```bash
 python train.py

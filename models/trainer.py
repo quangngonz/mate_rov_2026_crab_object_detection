@@ -2,7 +2,7 @@
 Crab Detection Trainer
 =====================
 
-Handles training of YOLOv8 models for crab detection.
+Handles training of YOLOv26 models for crab detection.
 """
 
 from pathlib import Path
@@ -24,7 +24,7 @@ from config.constants import (
 
 
 class CrabTrainer:
-    """Trains YOLOv8 models for crab detection."""
+    """Trains YOLOv26 models for crab detection."""
 
     def __init__(
         self,
@@ -37,7 +37,7 @@ class CrabTrainer:
 
         Args:
             data_yaml: Path to dataset configuration file
-            model_size: YOLOv8 model size (n, s, m, l, x)
+            model_size: YOLOv26 model size (n, s, m, l, x)
             device: Device to train on ('' for auto, 'cpu', 'cuda', 'mps')
         """
         self.data_yaml = Path(data_yaml)
@@ -62,7 +62,7 @@ class CrabTrainer:
 
     def load_model(self, pretrained: bool = True, checkpoint_path: Optional[str] = None) -> YOLO:
         """
-        Load YOLOv8 model.
+        Load YOLOv26 model.
 
         Args:
             pretrained: Whether to use pretrained weights
@@ -75,7 +75,7 @@ class CrabTrainer:
             print(f"Loading checkpoint: {checkpoint_path}")
             return YOLO(checkpoint_path)
 
-        model_name = f'yolov8{self.model_size}.pt' if pretrained else f'yolov8{self.model_size}.yaml'
+        model_name = f'yolov26{self.model_size}.pt' if pretrained else f'yolov26{self.model_size}.yaml'
         print(f"Loading model: {model_name}")
         return YOLO(model_name)
 
