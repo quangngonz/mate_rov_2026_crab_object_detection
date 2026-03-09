@@ -10,9 +10,19 @@ from data import SyntheticDatasetGenerator
 from pathlib import Path
 import random
 import numpy as np
+import argparse
 
 
 def main():
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description='Generate synthetic crab detection dataset')
+    parser.add_argument('num_train', type=int, nargs='?', default=1000,
+                        help='Number of training images (default: 1000)')
+    parser.add_argument('num_val', type=int, nargs='?', default=200,
+                        help='Number of validation images (default: 200)')
+    args = parser.parse_args()
+
     # Set random seeds for reproducibility
     random.seed(RANDOM_SEED)
     np.random.seed(RANDOM_SEED)
@@ -40,8 +50,8 @@ def main():
     # Generate dataset
     generator.generate_dataset(
         reference_images=reference_images,
-        num_train=1000,
-        num_val=200
+        num_train=args.num_train,
+        num_val=args.num_val
     )
 
 
