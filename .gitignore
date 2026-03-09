@@ -5,3 +5,4 @@ yolov8n.pt
 yolov11n.pt
 .DS_Store
 __pycache__/
+/.venv
