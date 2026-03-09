@@ -75,9 +75,31 @@ class CrabTrainer:
             print(f"Loading checkpoint: {checkpoint_path}")
             return YOLO(checkpoint_path)
 
-        model_name = f'yolov26{self.model_size}.pt' if pretrained else f'yolov26{self.model_size}.yaml'
-        print(f"Loading model: {model_name}")
-        return YOLO(model_name)
+        if pretrained:
+            # Prefer current naming convention, fallback for compatibility.
+            model_candidates = [
+                f'yolo26{self.model_size}.pt',
+                f'yolov26{self.model_size}.pt',
+            ]
+        else:
+            model_candidates = [
+                f'yolo26{self.model_size}.yaml',
+                f'yolov26{self.model_size}.yaml',
+            ]
+
+        last_error = None
+        for model_name in model_candidates:
+            try:
+                print(f"Loading model: {model_name}")
+                return YOLO(model_name)
+            except FileNotFoundError as e:
+                last_error = e
+                continue
+
+        if last_error is not None:
+            raise last_error
+
+        raise RuntimeError("No valid model candidates were generated.")
 
     def train(
         self,
