@@ -71,3 +71,4 @@ ultralytics-thop
 urllib3
 # onnxruntime-gpu
 cv2-enumerate-cameras
+PyQt6
