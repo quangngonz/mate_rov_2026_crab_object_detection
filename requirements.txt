@@ -66,7 +66,7 @@ tqdm
 typing-inspection
 typing_extensions
 tzdata
-ultralytics
+ultralytics>=8.2.91
 ultralytics-thop
 urllib3
 # onnxruntime-gpu
