@@ -101,6 +101,15 @@ class CrabTrainer:
 
         raise RuntimeError("No valid model candidates were generated.")
 
+    @staticmethod
+    def _reset_run_overrides(model: YOLO, project: str, name: str) -> None:
+        """Clear inherited run metadata so fine-tuning doesn't nest under old runs/."""
+        if hasattr(model, 'overrides') and isinstance(model.overrides, dict):
+            for key in ('save_dir', 'project', 'name'):
+                model.overrides.pop(key, None)
+            model.overrides['project'] = project
+            model.overrides['name'] = name
+
     def train(
         self,
         epochs: int = DEFAULT_EPOCHS,
@@ -134,8 +143,13 @@ class CrabTrainer:
         Returns:
             Dictionary with training results
         """
+        project_path = Path(project).resolve()
+
         # Load model
         model = self.load_model(pretrained, resume_checkpoint)
+
+        if resume_checkpoint:
+            self._reset_run_overrides(model, str(project_path), name)
 
         # Train
         results = model.train(
@@ -144,7 +158,7 @@ class CrabTrainer:
             imgsz=img_size,
             batch=batch_size,
             device=self.device,
-            project=project,
+            project=str(project_path),
             name=name,
             exist_ok=exist_ok,
             pretrained=pretrained,
@@ -191,9 +205,11 @@ class CrabTrainer:
             freeze=None,
         )
 
+        save_dir = Path(model.trainer.save_dir).resolve()
+
         return {
             'results': results,
-            'save_dir': Path(project) / name,
-            'best_model': Path(project) / name / 'weights' / 'best.pt',
-            'last_model': Path(project) / name / 'weights' / 'last.pt'
+            'save_dir': save_dir,
+            'best_model': save_dir / 'weights' / 'best.pt',
+            'last_model': save_dir / 'weights' / 'last.pt'
         }

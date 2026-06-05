@@ -7,14 +7,16 @@ Interactive UI for reviewing and correcting auto-generated labels, then training
 
 import cv2
 import argparse
+import random
+import shutil
 from pathlib import Path
 import numpy as np
-from typing import List, Tuple, Optional, Dict
+from typing import List, Tuple, Optional, Dict, Set
 import yaml
 import copy
 
 from config.constants import CRAB_CLASSES, CLASS_COLORS
-from models import CrabTrainer
+from models import CrabTrainer, CrabDetector
 
 
 class BoundingBox:
@@ -87,6 +89,8 @@ class LabelReviewUI:
                 f"Images directory not found: {images_dir}")
 
         self.labels_dir.mkdir(parents=True, exist_ok=True)
+        self.reviewed_file = self.labels_dir / '.reviewed_images.txt'
+        self.reviewed_stems: Set[str] = self.load_reviewed_stems()
 
         # Load all images
         self.image_files = sorted(list(self.images_dir.glob('*.jpg')) +
@@ -112,12 +116,54 @@ class LabelReviewUI:
         # UI state
         self.show_help = True
         self.modified = False
+        self.reset_button_rect = None
 
         # Undo functionality
         self.history: List[List[BoundingBox]] = []
         self.max_history = 20
 
+        reviewed_count = len(self.reviewed_stems)
         print(f"Loaded {len(self.image_files)} images from {images_dir}")
+        if reviewed_count:
+            print(f"  {reviewed_count} images marked as reviewed")
+
+    def load_reviewed_stems(self) -> Set[str]:
+        """Load set of image stems the user has already reviewed."""
+        if not self.reviewed_file.exists():
+            return set()
+        try:
+            with open(self.reviewed_file, 'r') as f:
+                return {line.strip() for line in f if line.strip()}
+        except Exception as e:
+            print(f"Warning: Could not load reviewed images list: {e}")
+            return set()
+
+    def save_reviewed_stems(self):
+        """Persist reviewed image stems."""
+        try:
+            with open(self.reviewed_file, 'w') as f:
+                for stem in sorted(self.reviewed_stems):
+                    f.write(f"{stem}\n")
+        except Exception as e:
+            print(f"Warning: Could not save reviewed images list: {e}")
+
+    def mark_current_reviewed(self):
+        """Mark the current image as reviewed by the user."""
+        stem = self.image_files[self.current_index].stem
+        if stem not in self.reviewed_stems:
+            self.reviewed_stems.add(stem)
+            self.save_reviewed_stems()
+
+    def reset_review_progress(self):
+        """Clear reviewed tracking and return to the first image."""
+        self.reviewed_stems.clear()
+        self.save_reviewed_stems()
+
+        if self.progress_file.exists():
+            self.progress_file.unlink()
+
+        self.load_image(0)
+        print("Review progress reset. Starting from image 1.")
 
     def load_labels(self, image_path: Path) -> List[BoundingBox]:
         """Load labels for an image."""
@@ -259,7 +305,10 @@ class LabelReviewUI:
         canvas_height, img_width = self.display_image.shape[:2]
 
         # Status bar at the very top (not overlaying)
+        reviewed_count = len(self.reviewed_stems)
+        pending_count = len(self.image_files) - reviewed_count
         status = f"Image {self.current_index + 1}/{len(self.image_files)} | "
+        status += f"Reviewed: {reviewed_count} | Pending: {pending_count} | "
         status += f"Boxes: {len(self.current_boxes)}"
         if self.selected_box_index is not None:
             status += f" (#{self.selected_box_index + 1} selected)"
@@ -270,6 +319,31 @@ class LabelReviewUI:
                       (img_width, 35), (50, 50, 50), -1)
         cv2.putText(self.display_image, status, (10, 22),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
+        button_text = "Reset Progress [R]"
+        button_size, _ = cv2.getTextSize(
+            button_text, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
+        button_width = button_size[0] + 20
+        button_height = 28
+        button_x1 = max(10, img_width - button_width - 10)
+        button_y1 = 4
+        button_x2 = button_x1 + button_width
+        button_y2 = button_y1 + button_height
+        self.reset_button_rect = (button_x1, button_y1, button_x2, button_y2)
+
+        cv2.rectangle(self.display_image, (button_x1, button_y1),
+                      (button_x2, button_y2), (90, 60, 60), -1)
+        cv2.rectangle(self.display_image, (button_x1, button_y1),
+                      (button_x2, button_y2), (180, 120, 120), 1)
+        cv2.putText(
+            self.display_image,
+            button_text,
+            (button_x1 + 10, button_y1 + 20),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (255, 255, 255),
+            2,
+        )
 
         # Help text (overlays the image - starts at y=40 where image begins)
         if self.show_help:
@@ -283,7 +357,9 @@ class LabelReviewUI:
                 "  D: Delete selected box",
                 "  Backspace: Clear all boxes",
                 "  Ctrl+Z: Undo last change",
-                "  H: Toggle help | T: Train | Q/ESC: Quit"
+                "  R or Reset button: Clear review progress",
+                "  H: Toggle help | P: Partial train & relabel | T: Full train",
+                "  Q/ESC: Quit"
             ]
 
             y_offset = 50  # Start below status bar but overlay the image
@@ -305,8 +381,15 @@ class LabelReviewUI:
         # Adjust y coordinate to account for UI area
         y_adjusted = y - ui_height
 
-        # Ignore clicks in the UI area
+        # Ignore clicks in the UI area unless they hit the reset button
         if y < ui_height:
+            if (
+                event == cv2.EVENT_LBUTTONDOWN
+                and self.reset_button_rect is not None
+            ):
+                x1, y1, x2, y2 = self.reset_button_rect
+                if x1 <= x <= x2 and y1 <= y <= y2:
+                    self.reset_review_progress()
             return
 
         if event == cv2.EVENT_LBUTTONDOWN:
@@ -374,12 +457,14 @@ class LabelReviewUI:
                 if self.modified:
                     self.save_labels(
                         self.image_files[self.current_index], self.current_boxes)
+                self.mark_current_reviewed()
                 self.load_image(self.current_index - 1)
 
             elif key == 83 or key == 3:  # Right arrow
                 if self.modified:
                     self.save_labels(
                         self.image_files[self.current_index], self.current_boxes)
+                self.mark_current_reviewed()
                 self.load_image(self.current_index + 1)
 
             # Box selection cycling
@@ -455,6 +540,7 @@ class LabelReviewUI:
                 self.save_labels(
                     self.image_files[self.current_index], self.current_boxes)
                 self.modified = False
+                self.mark_current_reviewed()
                 print(
                     f"Saved labels for {self.image_files[self.current_index].name}")
 
@@ -462,11 +548,26 @@ class LabelReviewUI:
             elif key == ord('h') or key == ord('H'):
                 self.show_help = not self.show_help
 
-            # Train
+            # Reset review progress
+            elif key == ord('r') or key == ord('R'):
+                self.reset_review_progress()
+
+            # Partial train on reviewed images, then relabel the rest
+            elif key == ord('p') or key == ord('P'):
+                if self.modified:
+                    self.save_labels(
+                        self.image_files[self.current_index], self.current_boxes)
+                self.mark_current_reviewed()
+                cv2.destroyAllWindows()
+                cv2.waitKey(1)
+                return 'partial_train'
+
+            # Full train
             elif key == ord('t') or key == ord('T'):
                 if self.modified:
                     self.save_labels(
                         self.image_files[self.current_index], self.current_boxes)
+                self.mark_current_reviewed()
                 cv2.destroyAllWindows()
                 cv2.waitKey(1)  # Allow window destruction to process
                 return 'train'
@@ -476,6 +577,7 @@ class LabelReviewUI:
                 if self.modified:
                     self.save_labels(
                         self.image_files[self.current_index], self.current_boxes)
+                self.mark_current_reviewed()
                 cv2.destroyAllWindows()
                 cv2.waitKey(1)  # Allow window destruction to process
                 return 'quit'
@@ -618,6 +720,24 @@ def prepare_training_data(review_dir: str, dataset_dir: str = 'dataset', val_spl
     print(f"  Overall split: {existing_train_count/(existing_train_count + existing_val_count)*100:.1f}% train / {existing_val_count/(existing_train_count + existing_val_count)*100:.1f}% val")
 
 
+def resolve_trained_model_path(train_result: dict, run_name: str) -> Path:
+    """Return the trained best.pt path, with fallback for legacy nested runs/."""
+    best_model = Path(train_result['best_model']).resolve()
+    if best_model.exists():
+        return best_model
+
+    nested_fallback = Path('runs/detect/runs/detect') / \
+        run_name / 'weights' / 'best.pt'
+    if nested_fallback.exists():
+        print(
+            f"Warning: Using model from legacy nested path: {nested_fallback}")
+        return nested_fallback.resolve()
+
+    raise FileNotFoundError(
+        f"Trained model not found at {best_model} or {nested_fallback}"
+    )
+
+
 def train_model(dataset_dir: str = 'dataset', epochs: int = 50, model_path: str = 'weights/best.pt'):
     """
     Fine-tune the model with additional data.
@@ -650,7 +770,7 @@ def train_model(dataset_dir: str = 'dataset', epochs: int = 50, model_path: str 
     )
 
     # Train with existing checkpoint
-    results = trainer.train(
+    train_result = trainer.train(
         epochs=epochs,
         batch_size=16,
         img_size=640,
@@ -661,13 +781,266 @@ def train_model(dataset_dir: str = 'dataset', epochs: int = 50, model_path: str 
         resume_checkpoint=model_path
     )
 
+    best_model = resolve_trained_model_path(
+        train_result, 'crab_detector_finetuned')
+
     print("\n" + "="*80)
     print("✓ TRAINING COMPLETE")
     print("="*80)
-    print(f"\nBest model saved to: runs/detect/crab_detector_finetuned/weights/best.pt")
+    print(f"\nBest model saved to: {best_model}")
     print(f"\nTo use the new model:")
-    print(f"  1. Copy it to weights/: cp runs/detect/crab_detector_finetuned/weights/best.pt weights/")
-    print(f"  2. Or specify path: --model_path runs/detect/crab_detector_finetuned/weights/best.pt")
+    print(f"  1. Copy it to weights/: cp {best_model} weights/")
+    print(f"  2. Or specify path: --model_path {best_model}")
+
+
+def create_partial_training_dataset(
+    review_dir: str,
+    reviewed_stems: Set[str],
+    val_split: float = 0.2
+) -> Path:
+    """
+    Build a temporary YOLO dataset from reviewed images only.
+
+    Args:
+        review_dir: Review directory containing images/ and labels/
+        reviewed_stems: Image stems the user has reviewed
+        val_split: Fraction of reviewed data to use for validation
+
+    Returns:
+        Path to generated data.yaml
+    """
+    review_dir = Path(review_dir)
+    review_images = review_dir / 'images'
+    review_labels = review_dir / 'labels'
+    partial_dir = review_dir / '_partial_train'
+
+    if partial_dir.exists():
+        shutil.rmtree(partial_dir)
+
+    train_images_dir = partial_dir / 'images' / 'train'
+    train_labels_dir = partial_dir / 'labels' / 'train'
+    val_images_dir = partial_dir / 'images' / 'val'
+    val_labels_dir = partial_dir / 'labels' / 'val'
+
+    for directory in (train_images_dir, train_labels_dir, val_images_dir, val_labels_dir):
+        directory.mkdir(parents=True, exist_ok=True)
+
+    reviewed_files = sorted(
+        img_file for img_file in list(review_images.glob('*.jpg')) + list(review_images.glob('*.png'))
+        if img_file.stem in reviewed_stems
+    )
+
+    if not reviewed_files:
+        raise ValueError(
+            "No reviewed images found to build partial training dataset")
+
+    shuffled_files = reviewed_files.copy()
+    random.shuffle(shuffled_files)
+
+    if len(shuffled_files) == 1:
+        train_files = shuffled_files
+        val_files = shuffled_files
+    elif len(shuffled_files) < 5:
+        val_files = shuffled_files[-1:]
+        train_files = shuffled_files[:-1]
+    else:
+        split_idx = int(len(shuffled_files) * (1 - val_split))
+        split_idx = max(1, min(split_idx, len(shuffled_files) - 1))
+        train_files = shuffled_files[:split_idx]
+        val_files = shuffled_files[split_idx:]
+
+    def copy_split(image_files: List[Path], images_dir: Path, labels_dir: Path, prefix: str):
+        for index, img_file in enumerate(image_files):
+            label_file = review_labels / f"{img_file.stem}.txt"
+            new_img_name = f"{prefix}_{index:05d}{img_file.suffix}"
+            new_label_name = f"{prefix}_{index:05d}.txt"
+            shutil.copy(str(img_file), str(images_dir / new_img_name))
+            if label_file.exists():
+                shutil.copy(str(label_file), str(labels_dir / new_label_name))
+            else:
+                (labels_dir / new_label_name).touch()
+
+    copy_split(train_files, train_images_dir, train_labels_dir, 'train')
+    copy_split(val_files, val_images_dir, val_labels_dir, 'val')
+
+    data_yaml = partial_dir / 'data.yaml'
+    with open(data_yaml, 'w') as f:
+        yaml.dump({
+            'path': str(partial_dir.resolve()),
+            'train': 'images/train',
+            'val': 'images/val',
+            'nc': len(CRAB_CLASSES),
+            'names': CRAB_CLASSES,
+        }, f, default_flow_style=False)
+
+    print(f"\n✓ Partial training dataset created at {partial_dir}")
+    print(f"  Reviewed images: {len(reviewed_files)}")
+    print(f"  Train split: {len(train_files)}")
+    print(f"  Val split: {len(val_files)}")
+
+    return data_yaml
+
+
+def relabel_unreviewed_images(
+    review_dir: str,
+    reviewed_stems: Set[str],
+    model_path: str,
+    conf_threshold: float = 0.25,
+    iou_threshold: float = 0.45
+) -> int:
+    """
+    Re-run model inference on images that have not been reviewed yet.
+
+    Args:
+        review_dir: Review directory containing images/ and labels/
+        reviewed_stems: Image stems to skip
+        model_path: Model checkpoint to use for inference
+        conf_threshold: Detection confidence threshold
+        iou_threshold: IoU threshold for NMS
+
+    Returns:
+        Number of images relabeled
+    """
+    review_dir = Path(review_dir)
+    images_dir = review_dir / 'images'
+    labels_dir = review_dir / 'labels'
+    labels_dir.mkdir(parents=True, exist_ok=True)
+
+    image_files = sorted(list(images_dir.glob('*.jpg')) +
+                         list(images_dir.glob('*.png')))
+    unreviewed_files = [
+        img for img in image_files if img.stem not in reviewed_stems]
+
+    if not unreviewed_files:
+        print("\nNo unreviewed images left to relabel.")
+        return 0
+
+    print(f"\nLoading model from {model_path}...")
+    detector = CrabDetector(
+        model_path=model_path,
+        conf_threshold=conf_threshold,
+        iou_threshold=iou_threshold
+    )
+
+    print(f"Relabeling {len(unreviewed_files)} unreviewed images...")
+    relabeled_count = 0
+    total_detections = 0
+
+    for index, image_path in enumerate(unreviewed_files):
+        img = cv2.imread(str(image_path))
+        if img is None:
+            print(f"Warning: Could not read {image_path}")
+            continue
+
+        img_height, img_width = img.shape[:2]
+        result = detector.predict(str(image_path))
+        label_path = labels_dir / f"{image_path.stem}.txt"
+
+        with open(label_path, 'w') as f:
+            for box_index in range(result['num_detections']):
+                box = result['boxes'][box_index]
+                class_id = int(result['class_ids'][box_index])
+                x1, y1, x2, y2 = box[:4]
+                x_center = ((x1 + x2) / 2) / img_width
+                y_center = ((y1 + y2) / 2) / img_height
+                width = (x2 - x1) / img_width
+                height = (y2 - y1) / img_height
+                f.write(
+                    f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n")
+                total_detections += 1
+
+        relabeled_count += 1
+        if (index + 1) % 10 == 0 or index + 1 == len(unreviewed_files):
+            print(
+                f"  Relabeled {index + 1}/{len(unreviewed_files)} images...", end='\r')
+
+    print(
+        f"\n✓ Relabeled {relabeled_count} images ({total_detections} detections)")
+    return relabeled_count
+
+
+def partial_train_and_relabel(
+    review_dir: str,
+    reviewed_stems: Set[str],
+    model_path: str,
+    partial_epochs: int = 10,
+    val_split: float = 0.2,
+    conf_threshold: float = 0.25,
+    iou_threshold: float = 0.45,
+    min_reviewed: int = 5
+) -> Optional[str]:
+    """
+    Train briefly on reviewed labels, then refresh auto-labels for the rest.
+
+    Returns:
+        Path to the new model checkpoint, or None if training was skipped
+    """
+    if len(reviewed_stems) < min_reviewed:
+        print(
+            f"\n❌ Need at least {min_reviewed} reviewed images for partial training "
+            f"(currently {len(reviewed_stems)})."
+        )
+        print("Review more frames first, then press P again.")
+        return None
+
+    unreviewed_count = 0
+    review_images = Path(review_dir) / 'images'
+    for img_file in list(review_images.glob('*.jpg')) + list(review_images.glob('*.png')):
+        if img_file.stem not in reviewed_stems:
+            unreviewed_count += 1
+
+    print("\n" + "="*80)
+    print("PARTIAL TRAIN & RELABEL")
+    print("="*80)
+    print(f"\nReviewed images: {len(reviewed_stems)}")
+    print(f"Unreviewed images: {unreviewed_count}")
+    print(f"Partial epochs: {partial_epochs}")
+    print(f"Base model: {model_path}")
+
+    data_yaml = create_partial_training_dataset(
+        review_dir, reviewed_stems, val_split)
+    reviewed_count = len(reviewed_stems)
+    batch_size = min(16, max(2, reviewed_count // 4))
+
+    print("\n" + "="*80)
+    print("STARTING PARTIAL FINE-TUNING")
+    print("="*80)
+
+    trainer = CrabTrainer(data_yaml=str(data_yaml), model_size='n')
+    train_result = trainer.train(
+        epochs=partial_epochs,
+        batch_size=batch_size,
+        img_size=640,
+        project='runs/detect',
+        name='crab_detector_partial',
+        exist_ok=True,
+        pretrained=True,
+        resume_checkpoint=model_path,
+        patience=max(5, partial_epochs),
+    )
+
+    new_model_path = str(resolve_trained_model_path(
+        train_result, 'crab_detector_partial'))
+    print(f"\n✓ Partial training complete: {new_model_path}")
+
+    if unreviewed_count > 0:
+        relabel_unreviewed_images(
+            review_dir=review_dir,
+            reviewed_stems=reviewed_stems,
+            model_path=new_model_path,
+            conf_threshold=conf_threshold,
+            iou_threshold=iou_threshold,
+        )
+    else:
+        print("\nAll images are already reviewed; skipping relabel step.")
+
+    print("\n" + "="*80)
+    print("✓ PARTIAL TRAIN & RELABEL COMPLETE")
+    print("="*80)
+    print("\nReturning to review UI. Continue correcting the refreshed labels,")
+    print("then press P again or T for full training when done.")
+
+    return new_model_path
 
 
 def main():
@@ -705,6 +1078,30 @@ def main():
         default=0.2,
         help="Fraction of new data to use for validation (default: 0.2 for 80/20 split)"
     )
+    parser.add_argument(
+        '--partial_epochs',
+        type=int,
+        default=10,
+        help="Epochs for partial mid-review training when pressing P (default: 10)"
+    )
+    parser.add_argument(
+        '--conf_threshold',
+        type=float,
+        default=0.25,
+        help="Confidence threshold when relabeling unreviewed images (default: 0.25)"
+    )
+    parser.add_argument(
+        '--iou_threshold',
+        type=float,
+        default=0.45,
+        help="IoU threshold when relabeling unreviewed images (default: 0.45)"
+    )
+    parser.add_argument(
+        '--min_reviewed',
+        type=int,
+        default=5,
+        help="Minimum reviewed images required before partial training (default: 5)"
+    )
 
     args = parser.parse_args()
 
@@ -723,27 +1120,58 @@ def main():
         print(f"\nPlease run extract_and_label.py first to generate frames and labels.")
         return
 
-    # Start UI
-    ui = LabelReviewUI(str(images_dir), str(labels_dir))
-    result = ui.run()
+    current_model_path = args.model_path
 
-    if result == 'train':
-        # Ensure all CV2 windows are closed
-        cv2.destroyAllWindows()
-        cv2.waitKey(1)
+    while True:
+        ui = LabelReviewUI(str(images_dir), str(labels_dir))
+        result = ui.run()
 
-        print("\n" + "="*80)
-        print("PREPARING TRAINING DATA")
-        print("="*80)
+        if result == 'partial_train':
+            cv2.destroyAllWindows()
+            cv2.waitKey(1)
 
-        # Prepare data
-        prepare_training_data(
-            args.review_dir, args.dataset_dir, args.val_split)
+            new_model_path = partial_train_and_relabel(
+                review_dir=args.review_dir,
+                reviewed_stems=ui.reviewed_stems,
+                model_path=current_model_path,
+                partial_epochs=args.partial_epochs,
+                val_split=args.val_split,
+                conf_threshold=args.conf_threshold,
+                iou_threshold=args.iou_threshold,
+                min_reviewed=args.min_reviewed,
+            )
 
-        # Train model
-        train_model(args.dataset_dir, args.epochs, args.model_path)
-    else:
+            if new_model_path:
+                current_model_path = new_model_path
+
+                image_files = sorted(list(images_dir.glob(
+                    '*.jpg')) + list(images_dir.glob('*.png')))
+                for index, image_path in enumerate(image_files):
+                    if image_path.stem not in ui.reviewed_stems:
+                        progress_file = labels_dir / '.review_progress.txt'
+                        with open(progress_file, 'w') as f:
+                            f.write(str(index))
+                        print(
+                            f"\nResuming review at first pending image: {index + 1}/{len(image_files)}")
+                        break
+            continue
+
+        if result == 'train':
+            cv2.destroyAllWindows()
+            cv2.waitKey(1)
+
+            print("\n" + "="*80)
+            print("PREPARING TRAINING DATA")
+            print("="*80)
+
+            prepare_training_data(
+                args.review_dir, args.dataset_dir, args.val_split)
+
+            train_model(args.dataset_dir, args.epochs, current_model_path)
+            break
+
         print("\nQuitting without training.")
+        break
 
 
 if __name__ == '__main__':
